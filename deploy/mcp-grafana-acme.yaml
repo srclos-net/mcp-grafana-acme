@@ -2,9 +2,11 @@
 # https://stephgen-medussa.observe.devopsnow.cloud.
 #
 # Image is the personal build of github.com/srclosson/mcp-grafana (this tracks
-# the mcp-grafana repo's main). The GRAFANA_URL and the
-# GRAFANA_SERVICE_ACCOUNT_TOKEN secret are the connection's single default org;
-# per-org targeting beyond that is not enabled yet.
+# the mcp-grafana repo's main). Authentication is a shared user that is a
+# member of every target org (Viewer role; Admin in Main Org.), so
+# --dynamic-multi-org lets each tool call pick an org via its orgId argument
+# (1=Main Org., 3=Field Engineering, 4=HealthTech, 5=Bajaj Finserv). Calls
+# that omit orgId use the user's default org (Main Org.).
 #
 # Note: mcp-grafana-acme-secrets is owned by sealed-secret.yaml in this
 # directory; do not edit the live Secret by hand, it will be reverted on sync.
@@ -62,15 +64,20 @@ spec:
             - 0.0.0.0:8000
             - --allowed-hosts
             - "*"
-            - --disable-proxied
+            - --dynamic-multi-org
           env:
             - name: GRAFANA_URL
               value: https://stephgen-medussa.observe.devopsnow.cloud
-            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
+            - name: GRAFANA_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: mcp-grafana-acme-secrets
-                  key: GRAFANA_SERVICE_ACCOUNT_TOKEN
+                  key: GRAFANA_USERNAME
+            - name: GRAFANA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-grafana-acme-secrets
+                  key: GRAFANA_PASSWORD
           ports:
             - name: http
               containerPort: 8000

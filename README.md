@@ -24,10 +24,9 @@ running in the `mcp-grafana-acme` namespace of the `fe-stackgen-run` cluster.
   (imagePullPolicy Always, so every rollout pulls whatever was pushed last).
 - The TLS secret `mcp-grafana-acme-civo-tls` is managed by cert-manager and
   deliberately lives outside this repo.
-
-## Roadmap
-
-- [ ] Switch authentication to a shared user across Grafana orgs
-      (`GRAFANA_USERNAME`/`GRAFANA_PASSWORD`) so `--dynamic-multi-org` can
-      target orgs per call; drop `--disable-proxied` so datasource discovery
-      spans every org the user can access.
+- The server authenticates as a shared user (basic auth) that belongs to
+  every target org, with `--dynamic-multi-org` letting each tool call pick
+  an org via its `orgId` argument: 1=Main Org. (Admin), 3=Field Engineering,
+  4=HealthTech, 5=Bajaj Finserv (all Viewer). The sealed secret also retains
+  the old `GRAFANA_SERVICE_ACCOUNT_TOKEN` (unused) and the nginx
+  `MCP_BEARER_TOKEN` for the auth gate.
