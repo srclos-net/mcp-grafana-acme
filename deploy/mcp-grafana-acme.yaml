@@ -1,0 +1,104 @@
+# mcp-grafana "acme" — MCP server fronting the Grafana instance at
+# https://stephgen-medussa.observe.devopsnow.cloud.
+#
+# Image is the personal build of github.com/srclosson/mcp-grafana (this tracks
+# the mcp-grafana repo's main). The GRAFANA_URL and the
+# GRAFANA_SERVICE_ACCOUNT_TOKEN secret are the connection's single default org;
+# per-org targeting beyond that is not enabled yet.
+#
+# Note: mcp-grafana-acme-secrets is owned by sealed-secret.yaml in this
+# directory; do not edit the live Secret by hand, it will be reverted on sync.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-grafana-acme
+  namespace: mcp-grafana-acme
+  labels:
+    app: mcp-grafana-acme
+spec:
+  type: ClusterIP
+  selector:
+    app: mcp-grafana-acme
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-grafana-acme
+  namespace: mcp-grafana-acme
+  labels:
+    app: mcp-grafana-acme
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-grafana-acme
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: mcp-grafana-acme
+    spec:
+      imagePullSecrets:
+        - name: ecr-pull
+      containers:
+        - name: mcp-grafana-acme
+          image: docker.io/srclosson/mcp-grafana:latest
+          imagePullPolicy: Always
+          command:
+            - /app/mcp-grafana
+          args:
+            - --transport
+            - streamable-http
+            - --address
+            - 0.0.0.0:8000
+            - --allowed-hosts
+            - "*"
+            - --disable-proxied
+          env:
+            - name: GRAFANA_URL
+              value: https://stephgen-medussa.observe.devopsnow.cloud
+            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-grafana-acme-secrets
+                  key: GRAFANA_SERVICE_ACCOUNT_TOKEN
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

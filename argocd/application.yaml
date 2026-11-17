@@ -1,0 +1,26 @@
+# Argo CD Application for the mcp-grafana-acme stack.
+#
+# Applied by hand once (kubectl apply -n argocd -f argocd/application.yaml);
+# after that, Argo CD owns the deployment and every change in deploy/ syncs
+# automatically. Not itself managed by Argo CD — this repo has no app-of-apps,
+# matching how the cluster's other applications were created.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mcp-grafana-acme
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/srclos-net/mcp-grafana-acme.git
+    targetRevision: main
+    path: deploy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mcp-grafana-acme
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

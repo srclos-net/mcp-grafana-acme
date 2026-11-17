@@ -1,0 +1,125 @@
+# Auth gate for mcp-grafana-acme callers.
+#
+# Returns 200 for requests carrying the configured bearer token, 401 for
+# everything else. Note (as when this ran hand-applied): it is a pure
+# credential check, not a reverse proxy — it proxies nothing.
+#
+# The bearer token is NOT kept in git: it is sealed in sealed-secret.yaml and
+# injected as the AUTH_TOKEN environment variable. The nginx entrypoint
+# renders nginx.conf by envsubst on the mounted template, and because that
+# script only substitutes variables defined in the container environment, the
+# nginx variables ($http_authorization, $token_valid) pass through untouched.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-grafana-acme-auth
+  namespace: mcp-grafana-acme
+  labels:
+    app: mcp-grafana-acme-auth
+spec:
+  type: ClusterIP
+  selector:
+    app: mcp-grafana-acme-auth
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-grafana-acme-auth
+  namespace: mcp-grafana-acme
+  labels:
+    app: mcp-grafana-acme-auth
+data:
+  nginx.conf.template: |
+    events {}
+    http {
+      map_hash_bucket_size 256;
+      map $http_authorization $token_valid {
+        default 0;
+        "Bearer ${AUTH_TOKEN}" 1;
+      }
+      server {
+        listen 8080;
+        location / {
+          if ($token_valid = 0) {
+            return 401;
+          }
+          return 200;
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-grafana-acme-auth
+  namespace: mcp-grafana-acme
+  labels:
+    app: mcp-grafana-acme-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-grafana-acme-auth
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: mcp-grafana-acme-auth
+    spec:
+      imagePullSecrets:
+        - name: ecr-pull
+      containers:
+        - name: auth
+          image: docker.io/nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-grafana-acme-secrets
+                  key: MCP_BEARER_TOKEN
+            - name: NGINX_ENVSUBST_OUTPUT_DIR
+              value: /etc/nginx
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 1
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/templates/nginx.conf.template
+              subPath: nginx.conf.template
+      volumes:
+        - name: config
+          configMap:
+            name: mcp-grafana-acme-auth
+            defaultMode: 420
